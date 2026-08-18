@@ -20,59 +20,25 @@ STUB 이고(`_stub` 필드에 그렇게 적혀 있다), 그래서 조용히 어�
 검사한다 — **등급 축**(`service_risk_level`)이 `classify()` 의 출력과 같은가.
 
 검사하지 않는다 — **행동 축**(`action`). 행동 판정 본체가 아직 없다(DQ-01~05 미구현,
-`REPOSITORY_AUDIT.md` 6절). 없는 것을 있다고 검사할 수는 없으므로, 구현되면 여기에
-같은 모양으로 더한다. 그때까지 `action` 은 STUB 로 남는다.
+`REPOSITORY_AUDIT.md` 6절). 그 축은 `test_fixture_engine_agreement.py` 가 맡는다 —
+`decide()` 가 들어오면 자동으로 켜지도록 기대값을 미리 심어 뒀다(P0-2).
+
+**어댑터(`load`·`signals_from`)는 `conftest.py` 에 있다.** 두 축이 같은 함수를 통과해야
+한쪽만 픽스처를 정제하는 일이 생기지 않는다(C-21).
 
 원본 데이터(7.5GB)를 필요로 하지 않는다. 픽스처만 읽는다 — 그래야 팀원 전원이 돌릴 수 있다.
 """
 
 from __future__ import annotations
 
-import json
-
 import pytest
+from conftest import load, signals_from
 
-from services.decision.enums import AiRiskLevel, HazardSign, ServiceRiskLevel, UserContext
-from services.decision.service_risk import RiskSignals, classify
+from services.decision.enums import ServiceRiskLevel
+from services.decision.service_risk import classify
 
 #: 등급 축을 검사할 통합 응답 픽스처. 새 DS-* 를 만들면 여기 더한다.
 DEMO_FIXTURES = ["DS-S1", "DS-S6", "DS-S7", "DS-S8"]
-
-
-def load(root, name: str) -> dict:
-    path = root / "contracts" / "fixtures" / "demo" / f"{name}.assess_response.json"
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def signals_from(payload: dict) -> RiskSignals:
-    """`AssessResponse` 를 `classify()` 입력으로 옮긴다.
-
-    출처는 `service_risk.RiskSignals` 문서화 표와 같다. **여기서 값을 정제하지 않는다** —
-    정제하면 "픽스처를 그대로 받는다"가 아니라 "정제하면 통과한다"를 증명하게 된다(C-21).
-    """
-    decision = payload["decision"]
-    user_state = decision["user_state"]
-    official = payload.get("official") or {}
-    risk = payload["risk"]
-    drivers = {d["feature"]: d["value"] for d in risk.get("drivers", [])}
-    ai_level = risk["area_risk"].get("ai_risk_level")
-
-    return RiskSignals(
-        context=UserContext(user_state["context"]),
-        trapped=user_state.get("trapped", False),
-        hazard_signs=tuple(HazardSign(h) for h in user_state.get("hazard_signs") or ()),
-        official_present=bool(official),
-        evacuation_order=any(
-            a.get("kind") == "EVACUATION_ORDER" for a in official.get("alerts", [])
-        ),
-        closure_count=len(official.get("closures", [])),
-        ai_risk_level=AiRiskLevel(ai_level) if ai_level is not None else None,
-        data_age_sec=payload["clock"].get("data_age_sec") or 0,
-        observed_rate=risk["data_quality"]["observed_rate"],
-        rain_available=risk["data_quality"]["rain_available"],
-        rain_past_60m_mm=drivers.get("rain_past_60m_mm"),
-        in_service_area=payload["location"].get("in_service_area", True),
-    )
 
 
 @pytest.mark.parametrize("name", DEMO_FIXTURES)
