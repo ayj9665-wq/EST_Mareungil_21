@@ -33,10 +33,16 @@ def test_기본_시나리오가_계약을_통과한다(client):
     assert body["route"]["route_attempted"] is True
 
 
-def test_응답이_픽스처_출처임을_밝힌다(client):
-    """mock 을 실제 모델 결과처럼 표현하지 않는다."""
-    body = client.get("/api/assess").json()
-    assert body["source_kind"] == "FIXTURE"
+def test_응답이_출처를_시나리오별로_밝힌다(client):
+    """P0-6. 실제 경로 엔진으로 재현되는 시나리오는 LIVE_PIPELINE, 시설 만석처럼
+    재현 불가능한 시나리오는 FIXTURE로 남는다 - mock 을 실제 결과처럼 표현하지
+    않는다는 원칙은 그대로다.
+    """
+    live = client.get("/api/assess", params={"scenario": "DS-S1"}).json()
+    assert live["source_kind"] == "LIVE_PIPELINE"
+
+    stub = client.get("/api/assess", params={"scenario": "DS-S7"}).json()
+    assert stub["source_kind"] == "FIXTURE"
 
 
 def test_UI가_항상_표시할_값이_들어있다(client):
@@ -81,10 +87,15 @@ def test_목적지_선택이_응답에_반영된다(client):
     assert body["route"]["target"]["id"] == "GN-002"
 
 
-def test_목적지를_바꾸면_거리를_지어내지_않는다(client):
-    """경로 엔진이 없으므로 다시 계산할 수 없다. 없는 값을 채우지 않는다."""
+def test_목적지를_바꾸면_실거리가_계산된다(client):
+    """P0-6. DS-S1(LIVE)은 실제 경로 엔진이 haversine 로 실거리를 낸다.
+
+    eta_sec 은 소요시간 추정 로직이 아직 없어 여전히 None 이다 - 없는 값을
+    지어내지 않는다는 원칙은 eta_sec 에는 그대로 적용된다.
+    """
     body = client.get("/api/assess", params={"destination": "GN-002"}).json()
-    assert body["route"]["distance_m"] is None
+    assert isinstance(body["route"]["distance_m"], (int, float))
+    assert body["route"]["distance_m"] > 0
     assert body["route"]["eta_sec"] is None
 
 
@@ -128,12 +139,13 @@ def test_프로필_선택이_응답에_반영된다(client):
 
 
 def test_프로필은_아직_경로에_적용되지_않는다(client):
-    """M-37 은 확정됐지만 적용할 경로 비교 엔진이 STUB 이다.
+    """M-37 은 확정됐지만 적용할 경로 비교 엔진 로직이 아직 없다.
 
     **확정과 구현은 다르다**(CLAUDE.md 3절). 고른 값은 `user_state.profiles` 로
-    전달되고 `route.profile_applied` 는 비어 있다 — 이 어긋남이 현재 상태를
-    정확히 말한다. 경로 엔진이 붙으면서 순서를 실제로 조정하기 시작하면 여기가
-    빨개지고, 그때 화면 문구도 같이 고쳐야 한다.
+    전달되고 `RouteRequest.profiles` 까지 실제로 넘어가지만(P0-6), 후보 순서를
+    실제로 조정하는 로직은 `provider.py`에 아직 없어 `route.profile_applied` 는
+    비어 있다 — 이 어긋남이 현재 상태를 정확히 말한다. 순서를 실제로 조정하기
+    시작하면 여기가 빨개지고, 그때 화면 문구도 같이 고쳐야 한다.
     """
     body = client.get("/api/assess", params={"profile": ["ELDERLY"]}).json()
     assert body["decision"]["user_state"]["profiles"] == ["ELDERLY"]

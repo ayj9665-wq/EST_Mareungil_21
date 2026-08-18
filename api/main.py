@@ -4,19 +4,18 @@
 
 지금 상태
 ---------
-`decision` 블록은 이제 `classify()`/`decide()`/`apply()`를 실제로 호출해 채운다
-(P0-5). `route` 블록은 여전히 경로 엔진이 붙기 전이라 픽스처의 STUB 값을 그대로
-쓴다 - `apply()`는 그 STUB 상태를 입력으로 받아 후처리 규칙만 실제로 적용한다.
-
-`source_kind`는 이번 배선에서 건드리지 않았다. FIXTURE/STUB/LIVE_PIPELINE 중
-지금 상태에 어떤 값이 맞는지(decision은 실제 계산, route는 여전히 STUB인
-혼합 상태)는 문서에서 확인이 안 돼 임의로 정하지 않았다 - `docs/DECISIONS.md`
-확인 또는 PM 확인 필요.
+`decision` 블록은 `classify()`/`decide()`/`apply()`를 실제로 호출해 채운다(P0-5).
+`route` 블록도 이제 실제 경로 엔진(`DesignatedPointRouteProvider`)을 거친다(P0-6) —
+단, `DS-S7`·`DS-S8`은 시설 만석 서사가 진짜 엔진으로 재현되지 않아 여전히 픽스처
+STUB(`FixtureRouteProvider`)을 쓴다. 그래서 `source_kind`도 시나리오별로 갈린다:
+`DS-S1`·`DS-S6`은 `LIVE_PIPELINE`, `DS-S7`·`DS-S8`은 `FIXTURE`로 남는다.
 
 이 파일이 하는 일은 넷이다.
 1. 픽스처를 읽고
 2. 사용자가 고른 목적지·프로필을 반영하고
-3. RiskSignals 로 변환해 `classify()`/`decide()`/`apply()`로 decision 블록을 채우고
+3. RiskSignals 로 변환해 `classify()`/`decide()`로 1차 행동을 정하고,
+   그 행동으로 `RouteRequest` 를 만들어 경로 엔진에 넘긴 뒤 `apply()`로
+   최종 행동을 정해 decision·route 블록을 채우고
 4. **돌려주기 전에 계약을 검증한다.**
 
 4번이 핵심이다. 계약 위반을 UI 가 아니라 여기서 잡아야 다섯 명이 병렬로 만들 때
@@ -27,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,18 +36,25 @@ from api.fixtures import (
     apply_profiles,
     contract_errors,
     load_destinations,
+    load_safe_points,
     load_scenarios,
     load_validators,
 )
 from services.decision.adapters import signals_from
 from services.decision.decide import decide
-from services.decision.enums import Profile, RouteStatus
+from services.decision.enums import Action, Profile, RouteStatus
 from services.decision.postprocess import apply
 from services.decision.service_risk import classify
-from services.route.provider import provider_for, route_request_from
+from services.route.fixture_provider import FixtureRouteProvider
+from services.route.interface import DestinationPoint, RouteProvider, RouteRequest, RoutePoint
+from services.route.provider import DesignatedPointRouteProvider
 
 CONTRACT_VERSION = os.environ.get("MAREUNGIL_CONTRACT_VERSION", "v1")
 DEFAULT_SCENARIO = os.environ.get("MAREUNGIL_DEFAULT_SCENARIO", "DS-S1")
+
+#: 실제 경로 엔진으로 재현 가능한 시나리오. `DS-S7`·`DS-S8`은 시설 만석 서사가
+#: 진짜 엔진으로 재현되지 않아 픽스처 STUB(`FixtureRouteProvider`)에 남는다.
+LIVE_SCENARIOS = {"DS-S1", "DS-S6"}
 
 app = FastAPI(
     title="마른길 통합 API",
@@ -70,6 +77,10 @@ _validators = load_validators()
 _scenarios = load_scenarios()
 _destinations = load_destinations()
 _points = {p["id"]: p for p in _destinations["points"]}
+_safe_points = load_safe_points()
+_fixture_route_provider = FixtureRouteProvider(
+    routes={sid: body["route"] for sid, body in _scenarios.items()}
+)
 
 
 @app.get("/api/health")
@@ -127,12 +138,69 @@ def destinations() -> dict:
     }
 
 
-def _apply_decision_engine(body: dict) -> dict:
-    """RF 위험 -> classify() -> decide() -> 경로 상태 -> apply() 로 decision 블록을 채운다.
+def route_request_from(body: dict, primary_action: Action, profiles: list[str]) -> RouteRequest:
+    """진행 중인 `AssessResponse` body 에서 경로 엔진 입력을 만든다.
 
-    `risk` 블록은 이미 실제 모델 출력이다. `route` 는 아직 STUB 이므로 그 status 를
-    그대로 `apply()`에 넘긴다 - 후처리 규칙(CONFIRMED_TRANSITIONS·CONFIRMED_HOLDS)
-    자체는 실제로 동작한다.
+    입력 7개는 전부 body 안에 이미 있다 - 새로 계산하는 값이 없다.
+
+    `destination`은 `RouteRequest`의 필수 필드(F-19)인데, `EVACUATE` 시나리오처럼
+    `user_state.destination`이 비어 있는 응답도 있다. `EVACUATE`는 이 값을 쓰지
+    않으므로(`provider.py`의 `EVACUATE` 분기가 `request.destination`을 참조하지
+    않는다) `origin`과 같은 좌표의 빈 자리표시자로 채운다 - `MOVE`에서 목적지가
+    비는 경우는 없다(픽스처가 항상 기본 목적지를 채워 둔다).
+    """
+    location = body["location"]
+    origin = RoutePoint(lat=location["lat"], lon=location["lon"])
+
+    dest = body["decision"]["user_state"].get("destination")
+    if dest is not None:
+        destination = DestinationPoint(
+            id=dest["id"], label=dest["label"], lat=dest["lat"], lon=dest["lon"]
+        )
+    else:
+        destination = DestinationPoint(id="", label="", lat=origin.lat, lon=origin.lon)
+
+    return RouteRequest(
+        primary_action=primary_action,
+        origin=origin,
+        destination=destination,
+        asof=body["risk"]["asof"],
+        profiles=tuple(Profile(p) for p in profiles),
+        official=body.get("official", {}),
+        in_service_area=location["in_service_area"],
+    )
+
+
+def provider_for(body: dict) -> RouteProvider:
+    """시나리오별로 실제 경로 엔진과 픽스처 STUB 을 가른다.
+
+    `LIVE_SCENARIOS`(`DS-S1`·`DS-S6`)만 `DesignatedPointRouteProvider`를 쓴다.
+    나머지(`DS-S7`·`DS-S8`)는 시설 만석 서사가 실제 엔진으로 재현되지 않아 픽스처
+    STUB 을 그대로 쓴다. `FixtureRouteProvider.solve()`는 `scenario` 인자가 하나
+    더 필요해서 시그니처가 다르므로, 여기서 얇게 감싸 두 provider가 같은
+    `solve(request)` 하나로 호출되게 맞춘다.
+    """
+    scenario = body.get("_scenario")
+    if scenario in LIVE_SCENARIOS:
+        sensors = body.get("risk", {}).get("sensors", [])
+        return DesignatedPointRouteProvider(safe_points=_safe_points, sensors=sensors)
+
+    class _BoundFixtureProvider:
+        def solve(self, request: RouteRequest) -> dict[str, Any]:
+            return _fixture_route_provider.solve(request, scenario)
+
+    return _BoundFixtureProvider()
+
+
+def _apply_decision_engine(body: dict, profiles: list[str]) -> dict:
+    """RF 위험 -> classify() -> decide() -> 경로 엔진 -> apply() 로
+    decision·route 블록을 채운다.
+
+    `risk` 블록은 이미 실제 모델 출력이다. `route`도 `LIVE_SCENARIOS`에서는 실제
+    경로 엔진이 계산한다 - 후처리 규칙(`CONFIRMED_TRANSITIONS`·`CONFIRMED_HOLDS`)
+    은 그 결과의 `status`를 그대로 받는다.
+
+    `source_kind`는 `body["_scenario"]` 로 시나리오를 판별해 시나리오별로 갈린다.
 
     `needs_route`는 계약(`assess_response.schema.json`의 allOf)이 **1차 행동
     (`primary_action`) 기준**으로 강제한다 - 경로 후처리로 최종 행동이 바뀌어도
@@ -142,15 +210,13 @@ def _apply_decision_engine(body: dict) -> dict:
     signals = signals_from(body)
     risk_result = classify(signals)
     primary = decide(signals)
-    
-    req = route_request_from(body, primary.action)
-    route_res = provider_for(body).solve(req)
-
-    post = apply(primary.action, RouteStatus(route_res["status"]))
+    route = provider_for(body).solve(route_request_from(body, primary.action, profiles))
+    post = apply(primary.action, RouteStatus(route["status"]))
 
     reason_code = post.reason[0] if post.reason is not None else primary.reasons[0].code
 
     out = json.loads(json.dumps(body))  # 원본 픽스처를 건드리지 않는다
+    out["route"] = route
     out["decision"].pop("_stub", None)
     out["decision"].update(
         primary_action=primary.action.value,
@@ -161,10 +227,7 @@ def _apply_decision_engine(body: dict) -> dict:
         reason_code=reason_code,
         reasons=[r.as_dict() for r in primary.reasons],
     )
-    
-    out["route"].pop("_stub", None)
-    out["route"].update(route_res)
-    
+    out["source_kind"] = "LIVE_PIPELINE" if body.get("_scenario") in LIVE_SCENARIOS else "FIXTURE"
     return out
 
 
@@ -176,7 +239,8 @@ def assess(
         default=[],
         description=(
             "M-37. 고령자·아이동반 프로필. 순서 조정용이며 안전 기준을 완화하지 않는다. "
-            "경로 비교 엔진이 STUB 이라 아직 route.profile_applied 에 반영되지 않는다."
+            "경로 비교 엔진이 request.profiles 를 아직 안 써서 route.profile_applied 에 "
+            "반영되지 않는다."
         ),
     ),
 ) -> dict:
@@ -214,7 +278,7 @@ def assess(
             )
         body = apply_profiles(body, profile)
 
-    body = _apply_decision_engine(body)
+    body = _apply_decision_engine(body, profile)
 
     violations = contract_errors(_validators, body)
     if violations:

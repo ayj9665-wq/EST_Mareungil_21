@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = ROOT / "contracts" / "fixtures"
 DEMO_DIR = FIXTURE_DIR / "demo"
 DESTINATIONS = ROOT / "contracts" / "destinations.json"
+SAFE_POINTS = ROOT / "contracts" / "safe_points.json"
 
 
 def _read(path: Path) -> Any:
@@ -58,6 +59,11 @@ def load_scenarios() -> dict[str, dict[str, Any]]:
 def load_destinations() -> dict[str, Any]:
     """RT-14. 목적지로 고를 수 있는 지정 지점 목록."""
     return _read(DESTINATIONS)
+
+
+def load_safe_points() -> list[dict[str, Any]]:
+    """C-32. `EVACUATE` 후보 비교에 쓰는 안전거점 7곳(고정 집합)."""
+    return _read(SAFE_POINTS)["points"]
 
 
 def apply_destination(response: dict[str, Any], point: dict[str, Any]) -> dict[str, Any]:
@@ -105,11 +111,11 @@ def apply_profiles(response: dict[str, Any], profiles: list[str]) -> dict[str, A
     안에서 순서를 조정하는 것**뿐이고, 안전 기준이나 위험구간 제외 기준을 완화하지
     않는다.
 
-    그리고 지금은 **조정할 대상 자체가 없다.** 경로 비교 엔진이 STUB 이라 후보
-    순서를 만들지 않으므로 `route.profile_applied` 는 `[]` 로 둔다.
-    `user_state.profiles` 는 채우고 `profile_applied` 는 비는 이 어긋남이 현재
-    상태를 정확히 말한다 — 고른 것은 전달됐고 아직 반영되지는 않았다. 화면이
-    같은 문장을 쓴다(ProfilePicker).
+    그리고 지금은 **조정할 대상 자체가 없다.** 경로 비교 엔진이 `request.profiles`
+    를 아직 안 쓰므로(P0-6 이후) 후보 순서를 만들지 않아 `route.profile_applied`
+    는 `[]` 로 둔다. `user_state.profiles` 는 채우고 `profile_applied` 는 비는 이
+    어긋남이 현재 상태를 정확히 말한다 — 고른 것은 전달됐고 아직 반영되지는
+    않았다. 화면이 같은 문장을 쓴다(ProfilePicker).
 
     지어낸 순서를 넣지 않는다. 넣으면 검증되지 않은 값(1.15·1.5)이 실제로 경로를
     바꾼 것처럼 보인다.

@@ -210,6 +210,14 @@ body {
   border: 1px solid var(--line);
 }
 
+/* LIVE: 실선 + 굵은 테두리/글씨로 FIXTURE와 흑백에서도 구분한다. */
+.badge--live {
+  background: var(--surface);
+  color: var(--ink);
+  border: 2px solid var(--line-strong);
+  font-weight: 800;
+}
+
 .badge--warn {
   background: var(--warn-bg);
   border-color: var(--caution);
@@ -451,7 +459,7 @@ body {
 }
 
 .reassess__button {
-  min-height: 44px;
+  min-height: var(--tap);
   padding: 0 0.8rem;
   border: 1px solid var(--line);
   border-radius: 8px;
