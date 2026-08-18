@@ -59,7 +59,7 @@ describe('모바일 단일 화면', () => {
 
   it('픽스처 기반임을 화면에 표시한다', () => {
     render(<App initialData={data} />);
-    expect(screen.getByText(/시연용 고정 자료로 동작 중/)).toBeDefined();
+    expect(screen.getByText(/시연·검증용 고정 데이터/)).toBeDefined();
   });
 
   it('목적지 선택은 지정 지점 목록 방식이다 (UI-10)', () => {

@@ -28,7 +28,6 @@ export function MapPanel({ data }: { data: AssessResponse }) {
     const el = holder.current;
     if (!el || lat == null || lon == null) return;
 
-    let isMounted = true;
     let map: L.Map | undefined;
     try {
       map = L.map(el, { attributionControl: true, zoomControl: true }).setView([lat, lon], 15);
@@ -51,114 +50,20 @@ export function MapPanel({ data }: { data: AssessResponse }) {
           .bindPopup(target.label)
           .addTo(map);
 
-        // [DEMO] "위험금지침수구역 피해서 우회하기"
-        // 실제 경로 탐색 대신, OSRM Public API (OpenStreetMap 기반 무료 서비스)를 호출합니다.
-        // 침수구역을 피하기 위해, 해당 위치 근처에서 약 350m 벗어난 '경유지(Waypoint)'를 추가합니다.
-        
-        const Ax = 0.292; const Ay = -0.956;
-        const Bx = 0.956; const By = 0.292;
-
-        const dx = target.lon - lon;
-        const dy = target.lat - lat;
-        const a = dx * Ax + dy * Ay;
-        const b = dx * Bx + dy * By;
-
-        const midLat = (Number(lat) + Number(target.lat)) / 2;
-        const midLon = (Number(lon) + Number(target.lon)) / 2;
-
-        // [DEMO] 침수 위험 통제 구역 (빨간 원) - 실제 지도 상의 물리적 크기 고정 (미터 단위)
-        const dangerCircle = L.circle([midLat, midLon], {
-          color: 'red',
-          fillColor: '#ff0000',
-          fillOpacity: 0.3,
-          radius: 250, // 실제 반경 250m 고정
-          weight: 2
-        }).addTo(map);
-
-        // [DEMO] 배경 박스(칸)가 있는 텍스트를 원 정중앙에 고정
-        const textIcon = L.divIcon({
-          html: '<div style="color:red; font-weight:bold; font-size:11px; text-align:center; background:rgba(255,255,255,0.8); padding:2px 4px; border-radius:2px; border:1px solid red; white-space:nowrap;">침수위험구역</div>',
-          className: '', // Leaflet 기본 마커 스타일 제거
-          iconSize: [80, 20],
-          iconAnchor: [40, 10]
-        });
-        const textMarker = L.marker([midLat, midLon], { icon: textIcon, interactive: false });
-
-        // 지도를 축소하면 하얀 박스가 붉은 원을 벗어나 거대해지는 문제 방지
-        const updateVisibility = () => {
-          if (!map) return;
-          // 줌 레벨이 15 이상(충분히 확대됨)일 때만 글자를 보여줌
-          if (map.getZoom() >= 15) {
-            if (!map.hasLayer(textMarker)) textMarker.addTo(map);
-          } else {
-            if (map.hasLayer(textMarker)) map.removeLayer(textMarker);
-          }
-        };
-
-        map.on('zoomend', updateVisibility);
-        updateVisibility(); // 초기 렌더링 시 적용
-
-        // [DEMO] 위험구역을 관통하는 기존 경로 (회색 점선)
+        // 원래 스펙대로 직선(점선)만 그려서 UI 시각화 (선 색상: 파란색)
         L.polyline(
           [
             [lat, lon],
             [target.lat, target.lon],
           ],
-          { weight: 4, dashArray: '8 6', opacity: 0.6, color: '#333' },
+          { weight: 4, dashArray: '8 6', opacity: 0.8, color: '#0066ff' },
         ).addTo(map);
-
-        // [DEMO] "위험금지침수구역 피해서 우회하기"
-        // 출발지부터 목적지까지의 방향 벡터를 구한 뒤, 이에 수직인 벡터를 이용해
-        // 금지구역(반경 250m)을 완벽하게 덮는 직사각형 모양의 2개 경유지를 계산합니다.
-        const dLat = Number(target.lat) - Number(lat);
-        const dLon = Number(target.lon) - Number(lon);
-        const dist = Math.sqrt(dLat * dLat + dLon * dLon) || 1;
-
-        // 정규화된 방향 벡터 (진행 방향)
-        const uLat = dLat / dist;
-        const uLon = dLon / dist;
-
-        // 진행 방향에 수직인 벡터 (우측으로 90도 회전)
-        const pLat = -uLon;
-        const pLon = uLat;
-
-        // 우회 거리 (측면으로 350m = 약 0.0031도)
-        const detourDist = 0.0031;
-        // 전진 거리 (원 중심에서 앞뒤로 300m = 약 0.0027도)
-        const forwardDist = 0.0027;
-
-        // 1. 원에 도달하기 전(진행 방향 반대) 측면으로 빠지는 경유지
-        const wp1Lat = midLat - uLat * forwardDist + pLat * detourDist;
-        const wp1Lon = midLon - uLon * forwardDist + pLon * detourDist;
-
-        // 2. 원을 지나서(진행 방향) 측면에 있는 경유지
-        const wp2Lat = midLat + uLat * forwardDist + pLat * detourDist;
-        const wp2Lon = midLon + uLon * forwardDist + pLon * detourDist;
-
-        // OSRM API 호출 (도보 기준: 골목길, 흰색 길을 모두 따라가며 금지구역 외곽을 완벽히 돎)
-        const osrmUrl = `https://router.project-osrm.org/route/v1/walking/${lon},${lat};${wp1Lon},${wp1Lat};${wp2Lon},${wp2Lat};${target.lon},${target.lat}?overview=full&geometries=geojson`;
-
-        fetch(osrmUrl)
-          .then(res => res.json())
-          .then(data => {
-            if (isMounted && map && data.routes && data.routes[0]) {
-              const coords = data.routes[0].geometry.coordinates;
-              const latLngs = coords.map((c: number[]) => [c[1], c[0]] as [number, number]);
-              
-              // 위험을 피해서 실제 도로를 따라가는 우회경로(파란색 실선)
-              L.polyline(latLngs, { weight: 5, opacity: 0.9, color: '#0066ff' })
-                .bindPopup('우회경로 (OSRM 기반)')
-                .addTo(map);
-            }
-          })
-          .catch(err => console.error('OSRM route fetch error:', err));
       }
     } catch {
       setTiles('failed');
     }
 
     return () => {
-      isMounted = false;
       map?.remove();
     };
   }, [lat, lon, target]);
