@@ -44,6 +44,7 @@ from services.decision.decide import decide
 from services.decision.enums import Profile, RouteStatus
 from services.decision.postprocess import apply
 from services.decision.service_risk import classify
+from services.route.provider import provider_for, route_request_from
 
 CONTRACT_VERSION = os.environ.get("MAREUNGIL_CONTRACT_VERSION", "v1")
 DEFAULT_SCENARIO = os.environ.get("MAREUNGIL_DEFAULT_SCENARIO", "DS-S1")
@@ -141,7 +142,11 @@ def _apply_decision_engine(body: dict) -> dict:
     signals = signals_from(body)
     risk_result = classify(signals)
     primary = decide(signals)
-    post = apply(primary.action, RouteStatus(body["route"]["status"]))
+    
+    req = route_request_from(body, primary.action)
+    route_res = provider_for(body).solve(req)
+
+    post = apply(primary.action, RouteStatus(route_res["status"]))
 
     reason_code = post.reason[0] if post.reason is not None else primary.reasons[0].code
 
@@ -156,6 +161,10 @@ def _apply_decision_engine(body: dict) -> dict:
         reason_code=reason_code,
         reasons=[r.as_dict() for r in primary.reasons],
     )
+    
+    out["route"].pop("_stub", None)
+    out["route"].update(route_res)
+    
     return out
 
 
