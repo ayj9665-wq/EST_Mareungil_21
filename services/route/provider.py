@@ -1,6 +1,12 @@
+import json
+from pathlib import Path
 from typing import Any, Optional
-from services.route.interface import RouteProvider, RouteRequest
-from services.decision.enums import Action, RouteStatus, RouteTarget
+
+from services.route.interface import (
+    RouteProvider, RouteRequest, RoutePoint, DestinationPoint,
+    target_for, not_required
+)
+from services.decision.enums import Action, RouteStatus, Profile
 from services.route.distance import haversine_m
 
 class DesignatedPointRouteProvider(RouteProvider):
@@ -8,27 +14,13 @@ class DesignatedPointRouteProvider(RouteProvider):
         self.safe_points = safe_points
         self.sensors = sensors
 
-    def _get_route_target(self, action: Action) -> Optional[str]:
-        if action == Action.MOVE:
-            return RouteTarget.USER_DESTINATION.value
-        elif action == Action.EVACUATE:
-            return RouteTarget.SAFE_POINT.value
-        return None
-
     def solve(self, request: RouteRequest) -> dict[str, Any]:
-        route_target = self._get_route_target(request.primary_action)
+        target_enum = target_for(request.primary_action)
+        route_target = target_enum.value if target_enum else None
 
         # 1. NOT_REQUIRED 처리
         if request.primary_action in (Action.WAIT, Action.EMERGENCY, Action.UNAVAILABLE):
-            return {
-                "status": RouteStatus.NOT_REQUIRED.value,
-                "route_target": None,
-                "target": None,
-                "route_attempted": False,
-                "no_safe_route": None,
-                "route_verified": False,
-                "limit": "경로 탐색이 필요하지 않은 행동입니다."
-            }
+            return not_required("경로 탐색이 필요하지 않은 행동입니다.")
 
         # 2. 공식 통제로부터 차단된 목적지/거점 ID 목록 수집
         blocked_ids = set()
@@ -148,12 +140,45 @@ class DesignatedPointRouteProvider(RouteProvider):
                 "limit": "공식 대피시설 후보의 상대 비교 결과이며 실제 통행 가능성이나 안전을 보장하지 않습니다."
             }
         
-        return {
-            "status": RouteStatus.NOT_REQUIRED.value,
-            "route_target": None,
-            "target": None,
-            "route_attempted": False,
-            "no_safe_route": None,
-            "route_verified": False,
-            "limit": "알 수 없는 행동입니다."
-        }
+        return not_required("알 수 없는 행동입니다.")
+
+def provider_for(payload: dict) -> DesignatedPointRouteProvider:
+    safe_points_path = Path(__file__).parent.parent.parent / "contracts" / "safe_points.json"
+    with open(safe_points_path, "r", encoding="utf-8") as f:
+        sp_data = json.load(f)
+    
+    sensors = []
+    if "risk" in payload and "sensors" in payload["risk"]:
+        sensors = payload["risk"]["sensors"]
+        
+    return DesignatedPointRouteProvider(
+        safe_points=sp_data.get("points", []),
+        sensors=sensors
+    )
+
+def route_request_from(payload: dict, primary_action: Action, profiles: tuple[Profile, ...] = ()) -> RouteRequest:
+    loc = payload.get("location") or {}
+    origin = RoutePoint(lat=loc.get("lat", 0.0), lon=loc.get("lon", 0.0))
+    
+    dest_data = payload.get("destination") or {}
+    dest = DestinationPoint(
+        id=dest_data.get("id", ""),
+        label=dest_data.get("label", ""),
+        lat=dest_data.get("lat", 0.0),
+        lon=dest_data.get("lon", 0.0)
+    )
+    
+    risk_data = payload.get("risk") or {}
+    asof = risk_data.get("asof", "2022-08-08T21:40:00+09:00")
+    
+    official = payload.get("official") or {}
+    
+    return RouteRequest(
+        primary_action=primary_action,
+        origin=origin,
+        destination=dest,
+        asof=asof,
+        profiles=profiles,
+        official=official,
+        in_service_area=True
+    )
