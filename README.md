@@ -92,6 +92,18 @@ cd mareungil
 > 지금 응답은 전부 **픽스처 기반**이다. 예측·판단·경로 엔진이 아직 붙지 않았고,
 > 화면과 API 응답(`source_kind`)이 그 사실을 표시한다.
 
+### 3. 배포 (Deployment)
+
+이 프로젝트는 백엔드와 프론트엔드가 분리되어 있으므로 투트랙(Two-track) 배포를 권장한다.
+
+- **백엔드 (Render)**
+  - Render 대시보드에서 **New > Blueprint** 로 저장소를 연결하면 루트의 `render.yaml`을 읽어 자동 배포된다.
+  - 수동 설정 시: Build Command `pip install -r requirements-dev.txt`, Start Command `uvicorn api.main:app --host 0.0.0.0 --port 10000`
+- **프론트엔드 (Vercel)**
+  - Vercel 대시보드에서 **Add New > Project** 로 저장소를 연결한다.
+  - ⚠️ **Root Directory**를 반드시 `web`으로 설정한다.
+  - **Environment Variables**에 `VITE_API_BASE` 키로 백엔드의 URL(`https://*.onrender.com`)을 추가하고 배포한다.
+
 ### 명령 전체
 
 ```powershell
