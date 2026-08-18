@@ -673,6 +673,26 @@ body {
   font-size: 1.35rem;
 }
 
+.emergency__trapped {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 56px;
+  padding: 0.75rem 1rem;
+  border: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.emergency__trapped:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 /* M-15. EVACUATE 인데 갈 곳이 없을 때. urgent 와 다른 단계이며 크기를 키우지
    않는다 - 행동은 여전히 대피이고 레이아웃까지 119 로 바꾸면 그 사실이 지워진다. */
 .emergency--emphasis {
