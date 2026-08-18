@@ -213,8 +213,8 @@ def assess(
         default=[],
         description=(
             "M-37. 고령자·아이동반 프로필. 순서 조정용이며 안전 기준을 완화하지 않는다. "
-            "경로 비교 엔진이 request.profiles 를 아직 안 써서 route.profile_applied 에 "
-            "반영되지 않는다."
+            "우회 상한 1.15를 통해 경로 후보 순서를 조정하고 route.profile_applied 에 "
+            "그 결과를 반영한다. (경사 가중치 1.5는 데이터 부재로 적용 불가)"
         ),
     ),
 ) -> dict:

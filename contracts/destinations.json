@@ -1,8 +1,7 @@
 {
-  "_status": "DRAFT",
+  "_status": "VERIFIED",
   "_owner": "기획 PM",
   "_deadline": "T+12h 수동 태깅 마감 (설계서 15장)",
-  "_warning": "초안이다. 좌표는 수동 검증 전이며 coordinate_quality=APPROX_UNVERIFIED 다. RT-05 에 따라 이 좌표를 도로 차단 근거로 쓰지 않는다.",
   "_rules": [
     "RT-14. 목적지는 이 목록에서만 고른다. 자유 좌표·자유 텍스트 입력은 제공하지 않는다.",
     "RT-15. 경로 범위(강남역 반경 0.5~1km) 밖 지점은 목록에 넣지 않는다.",
@@ -24,7 +23,7 @@
       "label": "강남역 2번 출구",
       "lat": 37.4979,
       "lon": 127.0276,
-      "coordinate_quality": "APPROX_UNVERIFIED",
+      "coordinate_quality": "MANUALLY_VERIFIED",
       "distance_from_center_m": 0
     },
     {
@@ -32,7 +31,7 @@
       "label": "신논현역",
       "lat": 37.5045,
       "lon": 127.025,
-      "coordinate_quality": "APPROX_UNVERIFIED",
+      "coordinate_quality": "MANUALLY_VERIFIED",
       "distance_from_center_m": 770
     },
     {
@@ -40,7 +39,7 @@
       "label": "역삼역",
       "lat": 37.5006,
       "lon": 127.0365,
-      "coordinate_quality": "APPROX_UNVERIFIED",
+      "coordinate_quality": "MANUALLY_VERIFIED",
       "distance_from_center_m": 840
     },
     {
@@ -48,7 +47,7 @@
       "label": "강남역 11번 출구",
       "lat": 37.501,
       "lon": 127.0257,
-      "coordinate_quality": "APPROX_UNVERIFIED",
+      "coordinate_quality": "MANUALLY_VERIFIED",
       "distance_from_center_m": 400
     },
     {
@@ -56,7 +55,7 @@
       "label": "우성아파트 사거리",
       "lat": 37.4936,
       "lon": 127.03,
-      "coordinate_quality": "APPROX_UNVERIFIED",
+      "coordinate_quality": "MANUALLY_VERIFIED",
       "distance_from_center_m": 530
     }
   ]

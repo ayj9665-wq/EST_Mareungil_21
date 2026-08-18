@@ -138,18 +138,15 @@ def test_프로필_선택이_응답에_반영된다(client):
     assert body["decision"]["user_state"]["profiles"] == ["ELDERLY", "WITH_CHILD"]
 
 
-def test_프로필은_아직_경로에_적용되지_않는다(client):
-    """M-37 은 확정됐지만 적용할 경로 비교 엔진 로직이 아직 없다.
+def test_프로필은_경로_후보_순서에_적용된다(client):
+    """M-37. 고른 프로필은 우회 상한 1.15를 통해 후보 순서에 반영된다.
 
-    **확정과 구현은 다르다**(CLAUDE.md 3절). 고른 값은 `user_state.profiles` 로
-    전달되고 `RouteRequest.profiles` 까지 실제로 넘어가지만(P0-6), 후보 순서를
-    실제로 조정하는 로직은 `provider.py`에 아직 없어 `route.profile_applied` 는
-    비어 있다 — 이 어긋남이 현재 상태를 정확히 말한다. 순서를 실제로 조정하기
-    시작하면 여기가 빨개지고, 그때 화면 문구도 같이 고쳐야 한다.
+    경로 엔진이 `request.profiles`를 받아 우회 상한 이내에서 위험도 우선으로
+    정렬하며, 적용된 프로필은 `route.profile_applied`에 담겨 반환된다.
     """
     body = client.get("/api/assess", params={"profile": ["ELDERLY"]}).json()
     assert body["decision"]["user_state"]["profiles"] == ["ELDERLY"]
-    assert body["route"].get("profile_applied") == []
+    assert body["route"].get("profile_applied") == ["ELDERLY"]
 
 
 def test_프로필은_위험과_행동을_바꾸지_않는다(client):

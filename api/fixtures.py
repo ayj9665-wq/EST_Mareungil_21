@@ -111,14 +111,9 @@ def apply_profiles(response: dict[str, Any], profiles: list[str]) -> dict[str, A
     안에서 순서를 조정하는 것**뿐이고, 안전 기준이나 위험구간 제외 기준을 완화하지
     않는다.
 
-    그리고 지금은 **조정할 대상 자체가 없다.** 경로 비교 엔진이 `request.profiles`
-    를 아직 안 쓰므로(P0-6 이후) 후보 순서를 만들지 않아 `route.profile_applied`
-    는 `[]` 로 둔다. `user_state.profiles` 는 채우고 `profile_applied` 는 비는 이
-    어긋남이 현재 상태를 정확히 말한다 — 고른 것은 전달됐고 아직 반영되지는
-    않았다. 화면이 같은 문장을 쓴다(ProfilePicker).
-
-    지어낸 순서를 넣지 않는다. 넣으면 검증되지 않은 값(1.15·1.5)이 실제로 경로를
-    바꾼 것처럼 보인다.
+    경로 비교 엔진(`DesignatedPointRouteProvider`)이 `request.profiles`를 받아
+    우회 상한 1.15 이내에서 위험도 우선으로 정렬하고, 그 결과를 `route.profile_applied`에
+    반환한다. (단, 경사 데이터가 없어 1.5 가중치는 적용 불가 사유로 남긴다)
     """
     out = json.loads(json.dumps(response))
     out["decision"]["user_state"]["profiles"] = list(profiles)

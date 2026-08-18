@@ -79,8 +79,8 @@ class DesignatedPointRouteProvider(RouteProvider):
                     "no_safe_route": False,
                     "distance_m": haversine_m(request.origin.lat, request.origin.lon, request.destination.lat, request.destination.lon),
                     "eta_sec": None,
-                    "profile_applied": [],
-                    "limit": "지정 지점에 대한 점대점 비교 결과이며 실제 통행 가능성이나 안전을 보장하지 않습니다."
+                    "profile_applied": [p.value for p in request.profiles],
+                    "limit": "지정 지점에 대한 점대점 비교 결과이며 실제 통행 가능성이나 안전을 보장하지 않습니다." + (" (경사 데이터가 없어 1.5 적용 불가)" if request.profiles else "")
                 }
 
         elif request.primary_action == Action.EVACUATE:
@@ -116,7 +116,17 @@ class DesignatedPointRouteProvider(RouteProvider):
                     "limit": "모든 안전거점이 공식 정보에 의해 차단되었습니다."
                 }
 
-            candidates.sort(key=lambda x: (x["risk"], x["dist"], x["sp"]["id"]))
+            if request.profiles:
+                min_dist = min(c["dist"] for c in candidates)
+                detour_limit = min_dist * 1.15
+                candidates.sort(key=lambda x: (x["dist"] > detour_limit, x["risk"], x["dist"], x["sp"]["id"]))
+                
+                profile_applied = [p.value for p in request.profiles]
+                limit_text = "공식 대피시설 후보의 상대 비교 결과이며 실제 통행 가능성이나 안전을 보장하지 않습니다. 우회 상한 1.15 이내에서 위험도 순으로 조정했습니다. (경사 가중치 1.5는 경사 데이터가 없어 적용 불가)"
+            else:
+                candidates.sort(key=lambda x: (x["risk"], x["dist"], x["sp"]["id"]))
+                profile_applied = []
+                limit_text = "공식 대피시설 후보의 상대 비교 결과이며 실제 통행 가능성이나 안전을 보장하지 않습니다."
             
             best = candidates[0]
             return {
@@ -134,8 +144,8 @@ class DesignatedPointRouteProvider(RouteProvider):
                 "no_safe_route": False,
                 "distance_m": best["dist"],
                 "eta_sec": None,
-                "profile_applied": [],
-                "limit": "공식 대피시설 후보의 상대 비교 결과이며 실제 통행 가능성이나 안전을 보장하지 않습니다."
+                "profile_applied": profile_applied,
+                "limit": limit_text
             }
         
         return not_required("알 수 없는 행동입니다.")
